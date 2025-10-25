@@ -1,82 +1,45 @@
 """
-Full Ontario courthouse scraper.
-Collects courthouse name, page link, address, phone, fax, and email
-from https://www.ontario.ca/locations/courts
+Scrape Ontario courthouse names and contact page links directly
+from the JSON feed used by https://www.ontario.ca/locations/courts
 """
 
+import requests
 import json
-from playwright.sync_api import sync_playwright
-
-BASE_URL = "https://www.ontario.ca"
-LIST_URL = f"{BASE_URL}/locations/courts"
 
 def scrape():
-    results = []
+    # Ontario.ca JSON data feed (Drupal REST view)
+    base_url = "https://www.ontario.ca"
+    api_url = "https://www.ontario.ca/api/views/locations/courts?page={}"
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        print("📡 Loading main courthouse list...")
-        page.goto(LIST_URL, timeout=60000)
-        page.wait_for_selector(".views-field-title a")
+    courthouses = []
+    page = 0
 
-        links = page.query_selector_all(".views-field-title a")
-        print(f"🔗 Found {len(links)} courthouse links")
+    print("📡 Fetching courthouse data from Ontario.ca API feed...")
 
-        for i, link in enumerate(links, start=1):
-            name = link.inner_text().strip()
-            href = link.get_attribute("href")
-            if not href:
-                continue
-            full_link = href if href.startswith("http") else BASE_URL + href
+    while True:
+        res = requests.get(api_url.format(page), headers={"User-Agent": "Mozilla/5.0"})
+        if res.status_code != 200:
+            print(f"⚠️ Page {page} request failed ({res.status_code})")
+            break
 
-            print(f"➡️ [{i}/{len(links)}] Scraping {name}")
+        data = res.json()
+        items = data.get("rows", [])
+        if not items:
+            break  # no more pages
 
-            # Visit the courthouse page
-            detail = browser.new_page()
-            try:
-                detail.goto(full_link, timeout=60000)
-                detail.wait_for_selector(".field--name-field-location-address", timeout=10000)
-            except Exception:
-                print(f"⚠️ Skipping {name} (page timeout)")
-                detail.close()
-                continue
+        for item in items:
+            title = item.get("title", "").strip()
+            path = item.get("path", "").strip()
+            if not path.startswith("http"):
+                path = base_url + path
+            courthouses.append({"name": title, "url": path})
 
-            # Address
-            addr_el = detail.query_selector(".field--name-field-location-address")
-            address = addr_el.inner_text().strip() if addr_el else ""
+        page += 1
 
-            # Contact details
-            phone = fax = email = ""
-            contact_section = detail.query_selector(".field--name-field-phone-fax-email")
-            if contact_section:
-                text = contact_section.inner_text()
-                for line in text.splitlines():
-                    line = line.strip()
-                    if line.lower().startswith("tel:") or line.lower().startswith("phone"):
-                        phone = line.split(":", 1)[-1].strip()
-                    elif line.lower().startswith("fax"):
-                        fax = line.split(":", 1)[-1].strip()
-                    elif "@" in line:
-                        email = line.strip()
+    print(f"✅ Found {len(courthouses)} courthouses")
 
-            results.append({
-                "name": name,
-                "url": full_link,
-                "address": address,
-                "phone": phone,
-                "fax": fax,
-                "email": email
-            })
-
-            detail.close()
-
-        browser.close()
-
-    with open("courthouses.json", "w", encoding="utf-8") as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
-
-    print(f"✅ Done! Saved {len(results)} courthouse records to courthouses.json")
+    with open("courthouse_links.json", "w", encoding="utf-8") as f:
+        json.dump(courthouses, f, ensure_ascii=False, indent=2)
 
 if __name__ == "__main__":
     scrape()
