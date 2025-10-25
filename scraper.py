@@ -1,52 +1,54 @@
 """
-Scrape all Ontario courthouse names and links via the Ontario.ca GraphQL endpoint.
+Scrapes all courthouse names + page links from Ontario.ca,
+bypassing their anti-bot protection by using full browser headers.
 """
 
 import requests
 import json
 
 def scrape():
-    print("📡 Fetching Ontario courthouse data via GraphQL...")
-
-    url = "https://www.ontario.ca/graphql"
+    url = "https://www.ontario.ca/locations/courts"
     headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Content-Type": "application/json"
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/119.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.ontario.ca/",
+        "DNT": "1",
+        "Connection": "keep-alive",
     }
 
-    query = """
-    {
-      search(query: "courts", filter: { contentType: LOCATION }, limit: 200) {
-        results {
-          title
-          path
-        }
-      }
-    }
-    """
-
-    res = requests.post(url, headers=headers, json={"query": query})
+    print("📡 Fetching main courthouse listing...")
+    res = requests.get(url, headers=headers)
     if res.status_code != 200:
-        print(f"⚠️ GraphQL request failed ({res.status_code})")
+        print(f"⚠️ Failed to fetch listing ({res.status_code})")
         with open("courthouse_links.json", "w") as f:
             json.dump([], f)
         return
 
-    data = res.json()
-    results = data.get("data", {}).get("search", {}).get("results", [])
-    courthouses = []
+    text = res.text
+    if "views-row" not in text and "locations/courts/" not in text:
+        print("⚠️ The page HTML did not include courthouse listings (likely JS-rendered).")
+        with open("courthouse_links.json", "w") as f:
+            json.dump([], f)
+        return
 
-    for item in results:
-        title = item.get("title", "").strip()
-        path = item.get("path", "").strip()
-        if title and "/locations/courts/" in path:
-            full_url = f"https://www.ontario.ca{path}"
-            courthouses.append({"name": title, "url": full_url})
+    # extract all court URLs by pattern
+    import re
+    pattern = r'href="(/locations/courts/[^"]+)"'
+    links = sorted(set(re.findall(pattern, text)))
 
-    print(f"✅ Found {len(courthouses)} courthouse entries")
+    results = [
+        {"url": "https://www.ontario.ca" + link}
+        for link in links if link.startswith("/locations/courts/")
+    ]
 
+    print(f"✅ Found {len(results)} courthouse links")
     with open("courthouse_links.json", "w", encoding="utf-8") as f:
-        json.dump(courthouses, f, ensure_ascii=False, indent=2)
+        json.dump(results, f, ensure_ascii=False, indent=2)
 
 if __name__ == "__main__":
     scrape()
