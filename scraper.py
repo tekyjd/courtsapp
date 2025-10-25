@@ -1,7 +1,6 @@
 """
-Phase 2: Visit each courthouse page and extract details
-(name, address, phone, fax, email).
-Assumes courthouse_links.json already exists from Phase 1.
+Phase 2 – Fetch address / phone / fax / email for each courthouse link.
+Reads courthouse_links.json created by Phase 1.
 """
 
 import requests
@@ -10,12 +9,12 @@ import json
 import time
 
 def scrape_details():
-    # Load courthouse_links.json
+    # Load links from previous phase
     try:
         with open("courthouse_links.json", "r", encoding="utf-8") as f:
             links = json.load(f)
     except FileNotFoundError:
-        print("❌ courthouse_links.json not found. Run Phase 1 first.")
+        print("❌ courthouse_links.json not found — run link scraper first.")
         return
 
     headers = {
@@ -30,6 +29,7 @@ def scrape_details():
     for i, entry in enumerate(links, start=1):
         url = entry["url"]
         print(f"🔎 [{i}/{len(links)}] Fetching {url}")
+
         try:
             res = requests.get(url, headers=headers, timeout=30)
             if res.status_code != 200:
@@ -38,11 +38,46 @@ def scrape_details():
 
             soup = BeautifulSoup(res.text, "html.parser")
 
-            # Courthouse name
-            name = soup.select_one("h1").get_text(strip=True) if soup.select_one("h1") else ""
+            # Name
+            name_el = soup.select_one("h1")
+            name = name_el.get_text(strip=True) if name_el else ""
 
             # Address
             addr_el = soup.select_one(".field--name-field-location-address")
             address = addr_el.get_text(separator=" ", strip=True) if addr_el else ""
 
-            # P
+            # Contact section
+            phone = fax = email = ""
+            contact_el = soup.select_one(".field--name-field-phone-fax-email")
+            if contact_el:
+                for line in contact_el.get_text(separator="\n").split("\n"):
+                    line = line.strip()
+                    if "phone" in line.lower() or line.lower().startswith("tel"):
+                        phone = line.split(":", 1)[-1].strip()
+                    elif line.lower().startswith("fax"):
+                        fax = line.split(":", 1)[-1].strip()
+                    elif "@" in line:
+                        email = line.strip()
+
+            results.append({
+                "name": name,
+                "url": url,
+                "address": address,
+                "phone": phone,
+                "fax": fax,
+                "email": email
+            })
+
+            time.sleep(1)  # polite delay
+
+        except Exception as e:
+            print(f"⚠️ Error fetching {url}: {e}")
+            continue  # move to next link
+
+    with open("courthouses.json", "w", encoding="utf-8") as f:
+        json.dump(results, f, ensure_ascii=False, indent=2)
+
+    print(f"✅ Done! Saved {len(results)} courthouses to courthouses.json")
+
+if __name__ == "__main__":
+    scrape_details()
