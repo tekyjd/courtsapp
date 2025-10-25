@@ -45,7 +45,7 @@ async def scrape():
         else:
             for addr in addrs:
                 street = addr.split(",")[0].strip()
-                formatted.append({"city": f\"{city} ({street})\", \"address\": addr})
+                formatted.append({"city": f"{city} ({street})", "address": addr})
 
     formatted.sort(key=lambda x: x["city"])
     with open("courthouses.json", "w", encoding="utf-8") as f:
