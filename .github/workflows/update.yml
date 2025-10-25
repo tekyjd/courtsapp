@@ -20,9 +20,7 @@ jobs:
           python-version: '3.x'
 
       - name: Install dependencies
-        run: |
-          pip install playwright
-          playwright install --with-deps chromium
+        run: pip install requests
 
       - name: Run scraper
         run: python scraper.py
