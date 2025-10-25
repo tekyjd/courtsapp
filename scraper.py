@@ -1,34 +1,52 @@
 """
-Scrape Ontario courthouse page links directly from the Ontario.ca XML sitemap.
-This version needs only the 'requests' library.
+Scrape all Ontario courthouse names and links via the Ontario.ca GraphQL endpoint.
 """
 
 import requests
-import xml.etree.ElementTree as ET
 import json
 
 def scrape():
-    sitemap_url = "https://www.ontario.ca/sitemap.xml"
-    base_url = "https://www.ontario.ca"
+    print("📡 Fetching Ontario courthouse data via GraphQL...")
 
-    print("📡 Downloading Ontario.ca sitemap...")
-    res = requests.get(sitemap_url, headers={"User-Agent": "Mozilla/5.0"})
+    url = "https://www.ontario.ca/graphql"
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Content-Type": "application/json"
+    }
+
+    query = """
+    {
+      search(query: "courts", filter: { contentType: LOCATION }, limit: 200) {
+        results {
+          title
+          path
+        }
+      }
+    }
+    """
+
+    res = requests.post(url, headers=headers, json={"query": query})
     if res.status_code != 200:
-        print(f"⚠️ Failed to fetch sitemap ({res.status_code})")
+        print(f"⚠️ GraphQL request failed ({res.status_code})")
         with open("courthouse_links.json", "w") as f:
             json.dump([], f)
         return
 
-    # Parse XML
-    root = ET.fromstring(res.text)
-    ns = {"ns": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+    data = res.json()
+    results = data.get("data", {}).get("search", {}).get("results", [])
+    courthouses = []
 
-    urls = []
-    for loc in root.findall(".//ns:loc", ns):
-        url = loc.text.strip()
-        if "/locations/courts/" in url:
-            urls.append(url)
+    for item in results:
+        title = item.get("title", "").strip()
+        path = item.get("path", "").strip()
+        if title and "/locations/courts/" in path:
+            full_url = f"https://www.ontario.ca{path}"
+            courthouses.append({"name": title, "url": full_url})
 
-    print(f"✅ Found {len(urls)} courthouse links")
+    print(f"✅ Found {len(courthouses)} courthouse entries")
 
-    results = [{"url": u} for u in so]()
+    with open("courthouse_links.json", "w", encoding="utf-8") as f:
+        json.dump(courthouses, f, ensure_ascii=False, indent=2)
+
+if __name__ == "__main__":
+    scrape()
