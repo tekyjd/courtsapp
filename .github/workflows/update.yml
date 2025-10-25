@@ -1,40 +1,37 @@
-### 2. `.github/workflows/update.yml`
-GitHub Action to run the scraper daily and push updates.
-```yaml
-
 name: Update Courthouse Data
 
+permissions:
+  contents: write
 
 on:
-schedule:
-- cron: '0 3 * * *' # every day at 3 AM UTC
-workflow_dispatch:
-
+  schedule:
+    - cron: '0 3 * * *'  # every day at 3 AM UTC
+  workflow_dispatch:      # allow manual trigger from Actions tab
 
 jobs:
-update-data:
-runs-on: ubuntu-latest
+  update-data:
+    runs-on: ubuntu-latest
 
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-steps:
-- name: Checkout repo
-uses: actions/checkout@v4
-- name: Set up Python
-uses: actions/setup-python@v5
-with:
-python-version: '3.x'
-- name: Install dependencies
-run: pip install requests beautifulsoup4
-- name: Run scraper
-run: python scraper.py
-- name: Commit and push changes
-run: |
-git config user.name "github-actions[bot]"
-git config user.email "github-actions[bot]@users.noreply.github.com"
-git add courthouses.json
-git commit -m "Auto-update courthouse data" || echo "No changes"
-git push
-```
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
 
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4
 
----
+      - name: Run scraper
+        run: python scraper.py
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add courthouses.json
+          git commit -m "Auto-update courthouse data" || echo "No changes to commit"
+          git push
