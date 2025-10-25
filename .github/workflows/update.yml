@@ -20,7 +20,8 @@ jobs:
           python-version: '3.x'
 
       - name: Install dependencies
-        run: pip install requests
+        run: |
+          pip install requests beautifulsoup4
 
       - name: Run scraper
         run: python scraper.py
@@ -29,6 +30,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add courthouse_links.json
+          git add courthouses.json
           git commit -m "Auto-update courthouse data" || echo "No changes"
           git push
