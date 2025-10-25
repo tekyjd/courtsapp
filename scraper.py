@@ -1,6 +1,6 @@
 """
-Fetch Ontario courthouse data directly from the Ontario.ca JSON API.
-No Playwright or headless browser required.
+Fetches Ontario courthouse locations from Ontario's open data catalogue
+and writes them to courthouses.json.
 """
 
 import requests
@@ -8,37 +8,26 @@ import json
 from collections import defaultdict
 
 def scrape():
+    url = "https://www.ontario.ca/data/ontario-court-locations.json"
+    res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+
+    if res.status_code != 200:
+        print(f"⚠️ Request failed: {res.status_code}")
+        with open("courthouses.json", "w") as f:
+            json.dump([], f)
+        return
+
+    data = res.json()
     courthouses = []
-    base_url = "https://www.ontario.ca/api/search"
-    params = {
-        "q": "",
-        "filter": "locations",
-        "sort": "title",
-        "page": 1,
-    }
 
-    while True:
-        res = requests.get(base_url, params=params, headers={"User-Agent": "Mozilla/5.0"})
-        if res.status_code != 200:
-            print(f"⚠️ Request failed: {res.status_code}")
-            break
+    # Each record contains fields for city, address, etc.
+    for record in data.get("data", []):
+        city = record.get("City") or record.get("city") or record.get("Municipality") or ""
+        address = record.get("Address") or record.get("address") or ""
+        if city and address:
+            courthouses.append({"city": city.strip(), "address": address.strip()})
 
-        data = res.json()
-        items = data.get("results", [])
-        if not items:
-            break
-
-        for item in items:
-            title = item.get("title", "").strip()
-            address = item.get("address", {}).get("address_line", "").strip()
-            if title and address:
-                courthouses.append({"city": title, "address": address})
-
-        if not data.get("next_page_url"):
-            break
-        params["page"] += 1
-
-    # Deduplicate by city
+    # Deduplicate
     grouped = defaultdict(list)
     for ch in courthouses:
         grouped[ch["city"]].append(ch["address"])
