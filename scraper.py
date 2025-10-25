@@ -1,57 +1,63 @@
 """
-Scrape Ontario courthouse data using Playwright (renders JS).
+Fetch Ontario courthouse data directly from the Ontario.ca JSON API.
+No Playwright or headless browser required.
 """
 
-import asyncio
+import requests
 import json
-from playwright.async_api import async_playwright
 from collections import defaultdict
 
-async def scrape():
+def scrape():
     courthouses = []
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        page = await browser.new_page()
+    base_url = "https://www.ontario.ca/api/search"
+    params = {
+        "q": "",
+        "filter": "locations",
+        "sort": "title",
+        "page": 1,
+    }
 
-        for page_num in range(0, 10):
-            url = f"https://www.ontario.ca/locations/courts?page={page_num}"
-            await page.goto(url)
-            await page.wait_for_selector(".location-listing, .views-row", timeout=15000)
-            html = await page.content()
+    while True:
+        res = requests.get(base_url, params=params, headers={"User-Agent": "Mozilla/5.0"})
+        if res.status_code != 200:
+            print(f"⚠️ Request failed: {res.status_code}")
+            break
 
-            items = await page.query_selector_all(".location-listing, .views-row")
-            if not items:
-                break
+        data = res.json()
+        items = data.get("results", [])
+        if not items:
+            break
 
-            for item in items:
-                name_el = await item.query_selector("a.location-title, .views-field-title a")
-                addr_el = await item.query_selector(".location-address, .views-field-field-location-address")
-                if name_el and addr_el:
-                    city = (await name_el.inner_text()).strip()
-                    address = (await addr_el.inner_text()).strip().replace("\\n", " ")
-                    courthouses.append({"city": city, "address": address})
+        for item in items:
+            title = item.get("title", "").strip()
+            address = item.get("address", {}).get("address_line", "").strip()
+            if title and address:
+                courthouses.append({"city": title, "address": address})
 
-        await browser.close()
+        if not data.get("next_page_url"):
+            break
+        params["page"] += 1
 
-    # dedupe
-    city_map = defaultdict(list)
+    # Deduplicate by city
+    grouped = defaultdict(list)
     for ch in courthouses:
-        city_map[ch["city"]].append(ch["address"])
+        grouped[ch["city"]].append(ch["address"])
 
     formatted = []
-    for city, addrs in city_map.items():
-        if len(addrs) == 1:
-            formatted.append({"city": city, "address": addrs[0]})
+    for city, addresses in grouped.items():
+        if len(addresses) == 1:
+            formatted.append({"city": city, "address": addresses[0]})
         else:
-            for addr in addrs:
+            for addr in addresses:
                 street = addr.split(",")[0].strip()
                 formatted.append({"city": f"{city} ({street})", "address": addr})
 
     formatted.sort(key=lambda x: x["city"])
+
     with open("courthouses.json", "w", encoding="utf-8") as f:
         json.dump(formatted, f, ensure_ascii=False, indent=2)
 
     print(f"✅ Found {len(formatted)} courthouses")
 
 if __name__ == "__main__":
-    asyncio.run(scrape())
+    scrape()
