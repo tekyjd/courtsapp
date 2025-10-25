@@ -1,3 +1,7 @@
+### 2. `.github/workflows/update.yml`
+GitHub Action to run the scraper daily and push updates.
+```yaml
+
 name: Update Courthouse Data
 
 
